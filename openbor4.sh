@@ -31,10 +31,25 @@ function build_openbor4() {
 
     rm -rf build.lin.arm64
 
+    # GCC 12/Bookworm puede cortar la compilación por warnings tratados como error.
+    # OpenBOR 4 actualmente puede disparar:
+    #   -Werror=use-after-free
+    # Por eso quitamos -Werror del proyecto antes de configurar CMake.
+    find . -type f \( \
+        -name "CMakeLists.txt" -o \
+        -name "*.cmake" -o \
+        -name "Makefile" -o \
+        -name "*.mk" \
+    \) -print0 | xargs -0 sed -i \
+        -e 's/-Werror=use-after-free//g' \
+        -e 's/-Werror//g'
+
     cmake -S . -B build.lin.arm64 \
         -DCMAKE_BUILD_TYPE=Release \
         -DBUILD_LINUX=ON \
-        -DTARGET_ARCH=ARM64 || return 1
+        -DTARGET_ARCH=ARM64 \
+        -DCMAKE_C_FLAGS="-Wno-error=use-after-free -Wno-use-after-free" \
+        -DCMAKE_CXX_FLAGS="-Wno-error=use-after-free -Wno-use-after-free" || return 1
 
     cmake --build build.lin.arm64 -- -j"$(nproc)" || return 1
 
@@ -63,7 +78,7 @@ exec "$INST_DIR/OpenBOR"
 EOF
     chmod +x "$md_inst/openbor.sh"
 
-    # 3) Asegurar config de runcommand (en PC esto NO existe si no lo creás)
+    # 3) Asegurar config de runcommand
     mkdir -p "$md_conf_root/openbor"
     cat >"$md_conf_root/openbor/emulators.cfg" <<EOF
 openbor4="$md_inst/openbor.sh %ROM%"
@@ -74,17 +89,17 @@ EOF
     addEmulator 1 "$md_id" "openbor" "$md_inst/openbor.sh %ROM%"
     addSystem "openbor" "OpenBOR" ".pak .PAK"
 
-    # 5) Config persistente (Saves + ScreenShots) en /opt/retropie/configs/openbor/openbor4
+    # 5) Config persistente
     for dir in Saves ScreenShots; do
         mkUserDir "$md_conf_root/openbor/$md_id/$dir"
     done
 
-    # 6) Rutas "RetroPie-like" dentro de $md_inst (symlinks)
-    # Paks -> romdir (para que el usuario maneje .pak en roms/openbor)
+    # 6) Rutas "RetroPie-like" dentro de $md_inst
+    # Paks -> romdir
     rm -rf "$md_inst/Paks"
     ln -snf "$romdir/openbor" "$md_inst/Paks"
 
-    # Saves/ScreenShots -> configs (persistente)
+    # Saves/ScreenShots -> configs
     rm -rf "$md_inst/Saves" "$md_inst/ScreenShots"
     ln -snf "$md_conf_root/openbor/$md_id/Saves" "$md_inst/Saves"
     ln -snf "$md_conf_root/openbor/$md_id/ScreenShots" "$md_inst/ScreenShots"
